@@ -28,16 +28,21 @@ public sealed class TrayIconService : IDisposable
     private const uint MfString = 0x0000;
     private const uint MfSeparator = 0x0800;
     private const uint TpmRightButton = 0x0002;
+    private const int WsPopup = unchecked((int)0x80000000);
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExNoActivate = 0x08000000;
     private const int MenuToggle = 1;
     private const int MenuExit = 2;
 
     private readonly Action _onOpen;
     private readonly Action _onToggle;
     private readonly Action _onExit;
+    private readonly string _tooltip;
     private readonly HwndSource _messageWindow;
     private readonly IntPtr _windowHandle;
     private readonly IntPtr _activeIcon;
     private readonly IntPtr _inactiveIcon;
+    private readonly uint _taskbarCreatedMessage;
     private bool _isActive;
     private bool _added;
     private bool _disposed;
@@ -52,30 +57,33 @@ public sealed class TrayIconService : IDisposable
         _onOpen = onOpen;
         _onToggle = onToggle;
         _onExit = onExit;
+        _tooltip = tooltip.Length > 127 ? tooltip[..127] : tooltip;
         _isActive = isActive;
 
+        // This must be a hidden top-level window, not HWND_MESSAGE. Explorer
+        // broadcasts TaskbarCreated after it recreates the notification area,
+        // and message-only windows deliberately do not receive broadcasts.
+        // WS_EX_TOOLWINDOW keeps this infrastructure window out of Alt+Tab and
+        // the taskbar; without WS_VISIBLE it is never drawn on the desktop.
         var parameters = new HwndSourceParameters("SnapHook_TrayWindow")
         {
             Width = 0,
             Height = 0,
-            WindowStyle = unchecked((int)0x80000000), // WS_POPUP
-            ParentWindow = new IntPtr(-3) // HWND_MESSAGE
+            WindowStyle = WsPopup,
+            ExtendedWindowStyle = WsExToolWindow | WsExNoActivate
         };
 
         _messageWindow = new HwndSource(parameters);
         _messageWindow.AddHook(WndProc);
         _windowHandle = _messageWindow.Handle;
+        _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
 
         // The active state comes straight from the executable's application icon,
         // exactly as Windows displays it in Explorer and the taskbar.
         _activeIcon = LoadExecutableIcon();
         _inactiveIcon = LoadIconFromResource();
 
-        var data = CreateData(NifMessage | NifIcon | NifTip | NifShowTip);
-        data.uCallbackMessage = WmTrayIcon;
-        data.hIcon = CurrentIcon;
-        data.szTip = tooltip.Length > 127 ? tooltip[..127] : tooltip;
-        _added = ShellNotifyIcon(NimAdd, ref data);
+        _added = AddIcon();
     }
 
     /// <summary>Switches the visual state and the next context-menu verb.</summary>
@@ -94,11 +102,24 @@ public sealed class TrayIconService : IDisposable
 
         var data = CreateData(NifIcon);
         data.hIcon = CurrentIcon;
-        ShellNotifyIcon(NimModify, ref data);
+        _added = ShellNotifyIcon(NimModify, ref data);
     }
 
     private IntPtr CurrentIcon =>
         _isActive || _inactiveIcon == IntPtr.Zero ? _activeIcon : _inactiveIcon;
+
+    /// <summary>
+    /// Registers the complete current tray state. Explorer owns this registration,
+    /// so it must be made again after Explorer recreates its notification area.
+    /// </summary>
+    private bool AddIcon()
+    {
+        var data = CreateData(NifMessage | NifIcon | NifTip | NifShowTip);
+        data.uCallbackMessage = WmTrayIcon;
+        data.hIcon = CurrentIcon;
+        data.szTip = _tooltip;
+        return ShellNotifyIcon(NimAdd, ref data);
+    }
 
     private NOTIFYICONDATA CreateData(uint flags) => new()
     {
@@ -110,7 +131,19 @@ public sealed class TrayIconService : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == WmTrayIcon)
+        if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
+        {
+            // This is a one-shot, event-driven recovery. No timer or polling is
+            // involved: Explorer has just told every top-level window that its
+            // notification area was replaced, so the old icon registration is gone.
+            if (!_disposed)
+            {
+                _added = AddIcon();
+            }
+
+            handled = true;
+        }
+        else if (message == WmTrayIcon)
         {
             var mouseMessage = (uint)lParam.ToInt64() & 0xFFFF;
             if (mouseMessage == WmLButtonUp)
@@ -337,6 +370,9 @@ public sealed class TrayIconService : IDisposable
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "Shell_NotifyIconW")]
     private static extern bool ShellNotifyIcon(uint message, ref NOTIFYICONDATA data);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterWindowMessageW")]
+    private static extern uint RegisterWindowMessage(string message);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr ExtractIcon(IntPtr instance, string executablePath, uint iconIndex);
