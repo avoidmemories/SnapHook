@@ -60,18 +60,16 @@ Blocking holds back the real key event and replaces it with a synthetic
 ## Compatibility Notes
 
 Testing has shown that the application works in many games. Notable popular titles include:
-- Valorant
-- Overwatch
-- Apex Legends
-- PUBG
-- Deadlock
-- Rocket League
-- Marvel Rivals
-- GTA V Legacy/Enhanced
-
-It also works in Counter-Strike 2 outside official matchmaking. However, official Valve servers may kick players after detecting automated input.
-
-FACEIT does not currently block SnapHook from running, but it ignores all of the application's input methods.
+- **Valorant**
+- **Overwatch**
+- **Apex Legends**
+- **PUBG**
+- **Deadlock**
+- **Rocket League**
+- **Marvel Rivals**
+- **GTA V Legacy/Enhanced**
+- It also works in **Counter-Strike 2** outside official matchmaking. However, official Valve servers may kick players after detecting automated input.
+ - FACEIT does not currently block SnapHook from running, but it ignores all of the application's input methods.
 
 ## Building
 
