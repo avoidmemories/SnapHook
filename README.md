@@ -59,7 +59,7 @@ Blocking holds back the real key event and replaces it with a synthetic
 
 ## Compatibility Notes
 
-Testing has shown that the application works in many games. Notable popular titles include:
+Snaphook works with many games. Notable popular titles include:
 - **Valorant**
 - **Overwatch**
 - **Apex Legends**
