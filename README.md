@@ -69,6 +69,7 @@ Testing has shown that the application works in many games. Notable popular titl
 - **Marvel Rivals**
 - **GTA V Legacy/Enhanced**
 
+
 - It also works in **Counter-Strike 2** outside official matchmaking. However, official Valve servers may kick players after detecting automated input.
   - **FACEIT** does not currently block SnapHook from running, but it ignores all of the application's input methods.
 
